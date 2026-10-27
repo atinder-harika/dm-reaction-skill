@@ -40,6 +40,19 @@ Only whitelisted threads. Never enter credentials. Stop on login, checkpoint or 
 the only DM sent is the one reply per run in a whitelisted thread. Never click React/Reply by position. Every reaction is verified.
 Skip a reel rather than guess at the UI. Replies: ≤15 words, no mentions, links or hashtags, nothing mean.
 
+## Releasing changes (do this automatically, every time)
+Installed copies are cached by `version` (`~/.claude/plugins/cache/reel-reactor-marketplace/reel-reactor/<version>`),
+so a change that keeps the same version never reaches users, even after `/plugin marketplace update`.
+- Any change to what ships in the plugin (`skills/`, `scripts/`, `.mcp.json`, `config/`, `.claude-plugin/`) must bump
+  `version` in `.claude-plugin/plugin.json` **in the same branch/PR**, without being asked. Docs-only changes
+  (`README.md`, `CLAUDE.md`) don't need a bump.
+- Semver: patch (`0.2.0` → `0.2.1`) for fixes such as selectors, queries or wording; minor (`0.2.x` → `0.3.0`) for new
+  behaviour or config keys; major only for breaking config/state changes.
+- One bump per PR: if the branch already bumped past `main`'s version, don't bump again.
+- Keep the `description` in `plugin.json` true to current behaviour.
+- In the PR description, remind the user how to pick it up: `/plugin marketplace update reel-reactor-marketplace`,
+  then Update the plugin in `/plugin` (or uninstall/reinstall), then start a new session.
+
 ## Gotchas
 - `npx` doesn't spawn directly on Windows, which is why the bundled server goes through the `playwright-mcp.mjs` launcher (shell spawn).
 - Plugin MCP servers and skills only load at session start, so after installing, start a new session.
