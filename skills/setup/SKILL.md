@@ -63,6 +63,7 @@ per time in `config.schedule` yourself. Each task:
 - prompt: `/reel-reactor:react`
 - runs on this computer (local), in the session's current folder
 - schedule: daily at that time (or one custom cron task like `0 9,12,17 * * *`)
+- model: Sonnet or Haiku when the task lets you choose. The scripts do the browser work, so a smaller model is enough.
 
 Otherwise the user creates them: **Code** tab → **Scheduled** in the sidebar → **New task** →
 paste `/reel-reactor:react` → under **Advanced settings** choose **Only on this computer** → pick
@@ -73,5 +74,5 @@ the browser tools with "always allow" so later unattended runs don't stop at a p
 Task Scheduler tasks that run `scripts/run-once.ps1`; add `-Remove` to delete them.
 On macOS/Linux, give crontab lines, one per time, e.g. for 09:00:
 ```
-0 9 * * * cd ~ && claude -p "/reel-reactor:react" --allowedTools "mcp__plugin_reel-reactor_playwright__*" Read Write Edit "Bash(node -e:*)" >> ~/.reel-reactor/run.log 2>&1
+0 9 * * * cd ~ && claude -p "/reel-reactor:react" --model sonnet --allowedTools "mcp__plugin_reel-reactor_playwright__*" Read Write Edit "Bash(node -e:*)" >> ~/.reel-reactor/run.log 2>&1
 ```

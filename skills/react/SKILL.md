@@ -1,120 +1,154 @@
 ---
 name: react
-description: Run Reel Reactor once. Opens Instagram DMs from whitelisted friends through the Playwright MCP, reacts to new reels with a mood-matched emoji, and posts one short funny comment on the standout reel. Use when the user says "run reel reactor", "react to my reels", or a scheduled job invokes it.
+description: Run Reel Reactor once. Reads Instagram DMs from whitelisted friends through the Playwright MCP, reacts to new reels with a mood-matched emoji, and sends the friend one short funny reply about the standout reel. Use when the user says "run reel reactor", "react to my reels", "watch mode", or a scheduled job invokes it.
 ---
 
 # Reel Reactor: one run
 
-You are driving a real Instagram account through the Playwright MCP browser tools
-(`browser_navigate`, `browser_snapshot`, `browser_click`, `browser_hover`, `browser_type`,
-`browser_press_key`, `browser_wait_for`). Use the plugin's bundled server
-(`mcp__plugin_reel-reactor_playwright__*`), or `mcp__playwright__*` if that's the one loaded.
-If neither exists, stop and tell the user to run `/reel-reactor:setup`.
-Work from accessibility snapshots, not guesses.
-Be careful and slow; a skipped reel is always better than a wrong click.
+You are driving a real Instagram account through the Playwright MCP browser tools. Use the plugin's
+bundled server (`mcp__plugin_reel-reactor_playwright__*`), or `mcp__playwright__*` if that's the one
+loaded. If neither exists, stop and tell the user to run `/reel-reactor:setup`.
+
+There are two modes:
+- **Fast mode** (default, used by scheduled runs): two scripts do the browser work in single calls and
+  you only do the judgment (mood, emoji, reply text). It takes about 6 tool calls.
+- **Watch mode** (`config.mode` = `"watch"`, or the user says "watch mode"): the same run done step by
+  step with visible clicks, for demos and screen recordings. Fast mode also falls back to it if the
+  collect script fails.
 
 ## Files
 
-All user files live in `~/.reel-reactor/` (on Windows: `%USERPROFILE%\.reel-reactor\`):
-
+User files live in `~/.reel-reactor/` (on Windows: `%USERPROFILE%\.reel-reactor\`):
 - `config.json`: the user's config (schema in `config/reel-reactor.example.json` at the plugin root)
-- `state.json`: written by this skill at the end of every run
+- `state.json`: `{ "lastRun": ISO, "processedReelIds": [codes], "recheckFriends": [usernames] }`
 
-If `config.json` is missing, stop and tell the user to run the `reel-reactor:setup` skill.
-If `state.json` is missing, start with `{ "lastRun": null, "processedReelIds": [] }`.
+If `config.json` is missing, stop and tell the user to run `/reel-reactor:setup`. If `state.json`
+is missing, start from `{ "lastRun": null, "processedReelIds": [], "recheckFriends": [] }`.
+
+The scripts are in `scripts/` at the plugin root, two levels up from this skill's base directory.
+Pass their **absolute** path as `filename`.
 
 ## Guardrails (never break these)
 
-- Only open DM threads with usernames in `config.friends`. Ignore every other thread.
-- Never type a username or password. If Instagram shows a login page, a checkpoint,
-  a "suspicious activity" screen or a CAPTCHA, stop the run, change nothing and tell the user.
-- Never send a DM, follow, unfollow, like posts, or touch account settings.
-  The only writes allowed are an emoji reaction on a DM message and one comment per run.
-- If the UI doesn't match these instructions (a button is missing or a dialog is unfamiliar),
-  skip that reel, record `skipped: <reason>` and carry on.
-- When `config.dryRun` is true, do every read step but no reaction and no comment.
-  Report what you *would* have done.
+- Only touch DM threads with usernames in `config.friends`.
+- Never type a username or password. If Instagram shows a login page, a checkpoint, a "suspicious
+  activity" screen or a CAPTCHA (`error: "login_required"` from a script), stop, change nothing and
+  tell the user.
+- The only writes allowed are emoji reactions on reel messages from whitelisted friends, plus at most
+  `config.repliesPerRun` (default 1, max 1) reply in that friend's thread. No other DMs, no comments on
+  reels, no follows or likes, no settings.
+- Never pick a React or Reply button by its position on the page. It must belong to the message that
+  contains that reel (the act script enforces this; in watch mode you do).
+- Every reaction must be **verified** on the right reel afterwards. If one landed on the wrong message,
+  stop the run and tell the user which message it was, so they can fix it by hand.
+- Reply text: 15 words max, casual lowercase, 0 to 1 emoji, no @mentions, hashtags or links, nothing
+  mean, sexual, political or about anyone's looks. Riff on the reel and its top comments; don't copy one.
+- `config.dryRun` = true means reading and probing only: nothing is clicked or sent.
 
-## Steps
+## Fast mode
 
 ### 1. Load config and state
-Read both files. Note `config.maxReelsPerRun` (default 15) and `config.commentsPerRun` (default 1).
+Read both files. Defaults: `maxReelsPerRun` 15, `repliesPerRun` 1 (an old `commentsPerRun` key means the same).
 
-### 2. Open the inbox
-`browser_navigate` to `https://www.instagram.com/direct/inbox/`, then `browser_snapshot`.
-Dismiss "Turn on notifications" style popups with **Not Now**. Check that you're logged in.
+### 2. Collect (one call, read-only)
+1. `browser_navigate` to `https://www.instagram.com/direct/inbox/` (the scripts read their input from
+   this site's localStorage).
+2. `browser_evaluate` with
+   `() => { localStorage.setItem('reelReactor.input', JSON.stringify(<INPUT>)); }`, where INPUT is
+   `{ friends, processedReelIds, recheckFriends, force, maxReelsPerRun }` from config and state.
+   `force` is true only when the user asked for a full re-check; scheduled runs use false.
+3. `browser_run_code` (or `browser_run_code_unsafe`) with `filename` = `<plugin root>/scripts/collect.js`.
 
-### 3. Collect new reels per friend
-For each username in `config.friends`:
-1. Open their thread. Click it in the inbox list, or use the inbox search box and type the username.
-2. Snapshot the thread. Shared reels show up as message bubbles that link to `/reel/<id>/`
-   (sometimes `/p/<id>/`). The `<id>` shortcode is the reel's identity.
-3. Keep only reels that are **sent by the friend** (left-hand bubbles, not yours) and whose id
-   is **not** in `state.processedReelIds`. Scroll up with `browser_press_key` `PageUp` only
-   while every visible reel is still new. Stop once you reach an already processed reel, or
-   anything older than `state.lastRun` when the thread shows timestamps.
-4. Record `{ friend, reelId, url }` for each. Stop collecting at `maxReelsPerRun` in total.
+It returns `{ ok, earlyExit, threads, reels, alreadyReacted }`:
+- `earlyExit: true` means no whitelisted thread is unread. Update `lastRun`, print
+  "Nothing new from <friends>", and **stop**. Most scheduled runs end here in seconds.
+- `ok: false` with `login_required`: stop (guardrail). With any other error, tell the user the data feed
+  didn't work and continue in **watch mode** from its step 2.
+- Each reel has `friend, threadFbid, messageId, code, previewFile, owner, caption, plays, likes,
+  commentCount, topComments[]`. Codes in `alreadyReacted` count as processed.
 
-If nothing is new, skip to step 7.
+If `reels` is empty, go to step 6.
 
-### 4. Read each reel's vibe
-For each collected reel:
-1. `browser_navigate` to `https://www.instagram.com/reel/<id>/` and snapshot.
-2. Read the caption, the like count and the view/play count if shown, plus the **top 4 or 5
-   comments** (open the comments panel if needed; don't scroll endlessly).
-3. Classify the mood from the comments (and caption if there are few comments):
-   `funny`, `wholesome`, `shocking`, `hype`, `sad`, `cringe`, `love`.
-4. Choose an emoji from `config.emojiPalette`, using this guide:
-   funny → 😂 or 💀 · wholesome → 😍 or ❤️ · shocking → 😮 · hype → 🔥 or 👏 ·
-   sad → 😭 · cringe → 💀 · love → ❤️. With **no comments at all**, use `config.defaultEmoji`.
+### 3. Judge each reel
+Classify the mood from the top comments (and the caption when there are few):
+`funny`, `wholesome`, `shocking`, `hype`, `sad`, `cringe`, `love`. Then pick an emoji from
+`config.emojiPalette`:
+funny → 😂 or 💀 · wholesome → 😍 or ❤️ · shocking → 😮 · hype → 🔥 or 👏 · sad → 😭 · cringe → 💀 · love → ❤️.
+No comments at all → `config.defaultEmoji`.
 
-### 5. Roll the dice for each reel
-Use a real RNG and don't pick the numbers yourself. Run one command per reel:
-`node -e "console.log(Math.floor(Math.random()*100))"`
+Roll the dice for all reels in **one** command with a real RNG (don't make the numbers up):
+`node -e "console.log(JSON.stringify(Array.from({length:N},()=>Math.floor(Math.random()*100))))"`
+Map each roll with `config.ratios`: below `emoji*100` → emoji; the next `sticker*100` → sticker,
+which counts as emoji while `stickersEnabled` is false; otherwise → none (left alone, which looks human).
 
-Map the roll with `config.ratios`:
-- roll < `emoji*100` → **emoji**
-- next `sticker*100` → **sticker** when `stickersEnabled` is true; in v1 that's off, so treat it as **emoji**
-- otherwise → **none** (leave it alone, which looks more human)
+**The reply:** pick the standout reel (most `plays`, falling back to `likes`, then `commentCount`), and
+write one reply **to the friend** about it, following the guardrail rules. It should sound like a
+friend reacting to what they sent, e.g. "the prius recycling dinosaurs comment is sending me".
+Skip the reply when `repliesPerRun` is 0.
 
-### 6. Act
-**Emoji reaction (in the DM thread):**
-1. Go back to the friend's thread (`https://www.instagram.com/direct/inbox/` then open it).
-2. `browser_hover` the reel's message bubble. A small toolbar appears next to it with a
-   **React** (smiley) button. Click it.
-3. Pick the chosen emoji from the quick bar. If it isn't there, click the **+**, type the
-   emoji's name in the search box (e.g. "joy", "skull", "fire"), and click the result.
-4. Snapshot to confirm the reaction shows under the bubble. If the reel already had *your*
-   reaction, leave it alone.
-5. `browser_wait_for` a random 2 to 5 seconds before the next action.
+### 4. Act (one call)
+1. `browser_evaluate` with `() => { localStorage.setItem('reelReactor.act', JSON.stringify(<ACT>)); }`:
+   ```json
+   { "probe": <config.dryRun>, "gapMs": [2000, 5000],
+     "actions": [{ "threadFbid": "…", "messageId": "…", "code": "…", "previewFile": "…", "emoji": "😂" }],
+     "reply": { "threadFbid": "…", "messageId": "…", "code": "…", "previewFile": "…", "text": "…" } }
+   ```
+   Include only reels whose roll gave an emoji. `reply` is null when skipped.
+2. `browser_run_code` with `filename` = `<plugin root>/scripts/act.js`.
 
-**One comment on the standout reel** (`commentsPerRun` times, usually 1):
-1. Among this run's reels, pick the standout: the highest view count, falling back to likes,
-   then the most comments.
-2. Write a comment that reacts to the reel *and* riffs on its top comments:
-   - 15 words max, casual lowercase, 0 to 1 emoji
-   - no @mentions, no hashtags, no links, nothing mean, sexual, political or about anyone's looks
-   - don't copy any existing comment word for word
-3. On `https://www.instagram.com/reel/<id>/`, click the **Add a comment…** box, `browser_type`
-   the text, then click **Post**. Snapshot to confirm it appears.
+Each result has a `status`:
+- `verified`: done, and confirmed in Instagram's data on the right message
+- `probe_ok`: dry run, where everything was found but nothing was clicked
+- `not_found` / `skipped` / `unverified`: not done (the detail says why); it gets retried next run
+- `wrong_message`: a reaction landed on a different message. **Stop** and tell the user which one.
 
-### 7. Save state and report
+### 5. Retry once in watch mode (optional)
+If 1 to 3 reactions came back `not_found` or `skipped`, you may redo just those with the watch-mode
+step-by-step procedure (step 4 there). Leave `unverified` ones alone, so nothing gets doubled.
+
+### 6. Save state and report
 Write `state.json`:
-```json
-{
-  "lastRun": "<now, ISO 8601>",
-  "processedReelIds": ["<old ids + this run's ids, keep only the newest 500>"]
-}
-```
-In dry-run mode, **don't** update `processedReelIds` (so the real run sees the same reels),
-but do update `lastRun`.
+- `lastRun`: now (ISO 8601)
+- `processedReelIds`: the old ones, plus this run's codes that are `verified`, rolled `none`, or in
+  `alreadyReacted`. Keep the newest 500. In dry-run mode, add nothing.
+- `recheckFriends`: friends who still have reels that weren't done (`not_found`, `skipped`,
+  `unverified`, over the cap), and in dry-run mode every friend that had reels. Opening a thread marks
+  it read, so without this the early-exit check would never look at that thread again. Drop a friend
+  from the list once a run leaves nothing unfinished for them.
 
-Then print a summary table:
+There's no "older than the last run" cutoff. Every reel is judged only by `processedReelIds` and
+whether it already has your reaction, so reels a run couldn't load are picked up by the next one.
 
-| friend | reel | mood | action |
-|---|---|---|---|
-| sam | C9xYz… | funny | 😂 |
-| sam | C9aBc… | hype | none (roll 93) |
-| alex | C8qRs… | wholesome | 😍 + comment: "the dog's face at the end lmao" |
+Print the summary table and one line of totals:
 
-Finish with one line: reels seen, reactions made, comment posted (yes/no), skips and why.
+| friend | reel | mood | action | result |
+|---|---|---|---|---|
+| sam | C9xYz… | funny | 😂 | verified |
+| sam | C9aBc… | hype | none (roll 93) | — |
+| alex | C8qRs… | wholesome | 😍 + reply: "the dog's face at the end lmao" | verified |
+
+## Watch mode (step by step, for demos)
+
+Same rules and the same judgment, but done with visible snapshot, hover and click steps. Narrate each
+step in one short line so a screen recording reads well. Use `browser_wait_for` with text or an element
+rather than fixed waits, except for the random 2 to 5 second gaps between reactions.
+
+1. **Load** config and state (fast mode step 1).
+2. **Find the reels.** If the collect script worked, use its list. Otherwise, for each friend, open
+   their thread from the inbox and snapshot it. Shared reels are message bubbles with a reel preview
+   image. Take the ones the friend sent that don't already show your reaction and aren't in
+   `processedReelIds`. Scroll up (`PageUp`) only while every visible reel is still new.
+3. **Read each reel.** `browser_navigate` to `https://www.instagram.com/reel/<code>/`, wait for the
+   comments to appear, and read the caption, counts and top 4 or 5 comments. Judge it as in fast mode step 3.
+4. **React, scoped to that message.** Back in the friend's thread:
+   1. Find the bubble that contains *that* reel's preview image (its file name is `previewFile` when
+      the collect script ran). Hover that bubble.
+   2. Click the **React to message from <friend>** button that sits inside that same message row,
+      never one picked by position or from a neighbouring row.
+   3. Pick the emoji from the quick bar (❤️ 😂 😮 😢 😡 👍). Otherwise click **Choose an emoji** in the
+      dialog and search: 💀 "death", 🔥 "flame", 😭 "crying", 😍 "heart eyes", 👏 "clap".
+   4. **Required check:** snapshot and confirm the emoji now shows under that reel's bubble and under no
+      other one. If it went to the wrong message, stop (guardrail).
+5. **Reply** on the standout reel: hover it, click **Reply to message from <friend>** in that row, type
+   the reply in the message box, press Enter, and confirm it shows in the thread.
+6. **Save state and report** (fast mode step 6).

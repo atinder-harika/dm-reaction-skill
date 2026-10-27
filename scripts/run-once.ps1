@@ -9,6 +9,6 @@ New-Item -ItemType Directory -Force $dataDir | Out-Null
 Set-Location $dataDir
 "`n===== $(Get-Date -Format s) =====" | Out-File -Append -Encoding utf8 $log
 
-& claude -p "/reel-reactor:react" `
+& claude -p "/reel-reactor:react" --model sonnet `
     --allowedTools "mcp__plugin_reel-reactor_playwright__*" Read Write Edit "Bash(node -e:*)" *>&1 |
     Out-File -Append -Encoding utf8 $log
