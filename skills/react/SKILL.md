@@ -7,7 +7,10 @@ description: Run Reel Reactor once. Opens Instagram DMs from whitelisted friends
 
 You are driving a real Instagram account through the Playwright MCP browser tools
 (`browser_navigate`, `browser_snapshot`, `browser_click`, `browser_hover`, `browser_type`,
-`browser_press_key`, `browser_wait_for`). Work from accessibility snapshots, not guesses.
+`browser_press_key`, `browser_wait_for`). Use the plugin's bundled server
+(`mcp__plugin_reel-reactor_playwright__*`), or `mcp__playwright__*` if that's the one loaded.
+If neither exists, stop and tell the user to run `/reel-reactor:setup`.
+Work from accessibility snapshots, not guesses.
 Be careful and slow; a skipped reel is always better than a wrong click.
 
 ## Files

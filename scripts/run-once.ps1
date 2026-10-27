@@ -1,7 +1,7 @@
-# Runs Reel Reactor once, headless Claude Code, appending output to ~/.reel-reactor/run.log.
-# Called by the Task Scheduler entries that schedule-windows.ps1 creates; also fine to run by hand.
+# Runs Reel Reactor once with headless Claude Code (CLI), appending output to ~/.reel-reactor/run.log.
+# Called by the Task Scheduler entries that schedule-windows.ps1 creates. Requires the plugin to be installed.
+# Desktop app users don't need this: use the app's Scheduled tasks instead (see README).
 
-$pluginRoot = Split-Path -Parent $PSScriptRoot
 $dataDir = Join-Path $env:USERPROFILE ".reel-reactor"
 $log = Join-Path $dataDir "run.log"
 New-Item -ItemType Directory -Force $dataDir | Out-Null
@@ -9,7 +9,6 @@ New-Item -ItemType Directory -Force $dataDir | Out-Null
 Set-Location $dataDir
 "`n===== $(Get-Date -Format s) =====" | Out-File -Append -Encoding utf8 $log
 
-& claude --plugin-dir $pluginRoot `
-    -p "Use the reel-reactor:react skill to run Reel Reactor now." `
-    --allowedTools "mcp__playwright,Read,Write,Edit,Bash(node -e:*)" *>&1 |
+& claude -p "/reel-reactor:react" `
+    --allowedTools "mcp__plugin_reel-reactor_playwright__*" Read Write Edit "Bash(node -e:*)" *>&1 |
     Out-File -Append -Encoding utf8 $log

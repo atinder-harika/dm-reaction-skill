@@ -1,6 +1,6 @@
 ---
 name: setup
-description: First-time setup for Reel Reactor. Checks that the Playwright MCP is installed (and explains how to install it if not), creates the config, walks the user through a manual Instagram login, and optionally schedules runs. Use when the user says "set up reel reactor" or the react skill reports missing config or login.
+description: First-time setup for Reel Reactor. Checks that the plugin's Playwright browser tools are available (and explains how to fix it if not), creates the config, walks the user through a manual Instagram login, and helps schedule runs. Use when the user says "set up reel reactor" or the react skill reports missing config or login.
 ---
 
 # Reel Reactor setup
@@ -9,30 +9,25 @@ Go through these checks in order. Report each one as ✅ or ❌ with a one-line 
 Don't move on past a ❌ that blocks later steps.
 
 ## 1. Node / npx
-Run `node --version` and `npx --version`. Node 18 or newer is required. If it's missing,
-point the user to https://nodejs.org (LTS) and stop.
+Run `node --version`. Node 18 or newer is required. If it's missing, tell the user to install
+the LTS from https://nodejs.org, **fully quit and reopen the Claude app**, and run setup again.
 
-## 2. Playwright MCP
-Check whether tools named `mcp__playwright__*` (for example `mcp__playwright__browser_navigate`)
-are available in this session. If you're not sure, run `claude mcp list` and look for `playwright`.
+## 2. Browser tools (bundled Playwright MCP)
+The plugin ships its own Playwright MCP server (`.mcp.json` at the plugin root, launched by
+`scripts/playwright-mcp.mjs`). Its tools are named `mcp__plugin_reel-reactor_playwright__*`,
+for example `mcp__plugin_reel-reactor_playwright__browser_navigate`.
 
-If it's missing, tell the user to run **one** of these and then restart Claude Code.
+- If those tools are available, ✅.
+- If they're missing, the plugin was probably installed during this session. Tell the user to
+  start a **new session** (or restart the app) and say "set up reel reactor" again.
+- If they're still missing after a restart, ask the user to type `/mcp` and check the
+  `plugin:reel-reactor:playwright` server. The usual causes are Node missing from PATH or a
+  failed first `npx` download, and the `/mcp` panel shows the error.
+- Fallback (only if the bundled server won't start): a standalone Playwright MCP also works.
+  The react skill accepts `mcp__playwright__*` tools too. Command, from a terminal:
+  `claude mcp add playwright --scope user -- npx @playwright/mcp@latest --user-data-dir ~/.reel-reactor/playwright-profile`
 
-macOS / Linux:
-```bash
-claude mcp add playwright --scope user -- npx @playwright/mcp@latest --user-data-dir ~/.reel-reactor/playwright-profile
-```
-
-Windows (native, PowerShell); `cmd /c` is needed for npx-based MCP servers on Windows:
-```powershell
-claude mcp add playwright --scope user -- cmd /c npx @playwright/mcp@latest --user-data-dir "$env:USERPROFILE\.reel-reactor\playwright-profile"
-```
-
-`--user-data-dir` gives the browser a persistent profile, so the user logs in to Instagram
-once and every scheduled run reuses that session. If the Playwright MCP is already installed
-without it, suggest removing it (`claude mcp remove playwright`) and adding it again as above.
-
-Stop here if the tools aren't loaded. The remaining steps need the browser.
+Stop here if no browser tools are loaded. The remaining steps need the browser.
 
 ## 3. Config
 Make the folder `~/.reel-reactor/` (`%USERPROFILE%\.reel-reactor\` on Windows) if it doesn't exist.
@@ -47,32 +42,36 @@ Write those into `config.json`. Leave `dryRun: true` for now and tell the user t
 first run is a dry run on purpose.
 
 ## 4. Instagram login (manual, done by the user)
-`browser_navigate` to `https://www.instagram.com/`. If it shows the logged-in feed, ✅.
-Otherwise tell the user:
+`browser_navigate` to `https://www.instagram.com/`. A separate browser window opens.
+If it shows the logged-in feed, ✅. Otherwise tell the user:
 
 > A browser window is open on Instagram. Log in **yourself** with your throwaway account,
 > tick "Save login info" if it asks, then tell me when you're done.
 
 Never type credentials yourself. Once the user confirms, navigate again and snapshot to check.
+If the browser fails to launch with a "chrome not found" style error, set `"browser": "msedge"`
+in `config.json` (Windows always has Edge), ask the user to start a new session, and try again.
 
 ## 5. Test run
-Suggest running the `reel-reactor:react` skill now (dry run). When the table looks right,
+Suggest running `/reel-reactor:react` now (it's a dry run). When the table looks right,
 set `dryRun` to `false` in `config.json`.
 
-## 6. Scheduling (optional)
-Claude Code doesn't run on its own, so the operating system starts it at the configured times.
+## 6. Scheduling
+**Claude desktop app (recommended):** use the app's Scheduled tasks, which run while the app
+is open and the computer is awake. If you have a scheduled-task tool, offer to create one task
+per time in `config.schedule` yourself. Each task:
+- prompt: `/reel-reactor:react`
+- runs on this computer (local), in the session's current folder
+- schedule: daily at that time (or one custom cron task like `0 9,12,17 * * *`)
 
-**Windows:** offer to run the bundled script from the plugin root. It registers one Task Scheduler
-task per time in `config.schedule`, and each one calls `scripts/run-once.ps1`:
-```powershell
-powershell -ExecutionPolicy Bypass -File "<plugin root>\scripts\schedule-windows.ps1"
-```
-Remove the tasks again with the same command plus `-Remove`.
+Otherwise the user creates them: **Code** tab → **Scheduled** in the sidebar → **New task** →
+paste `/reel-reactor:react` → under **Advanced settings** choose **Only on this computer** → pick
+a folder and **Daily** at the time → **Create**. Tell the user to use **Run now** once and approve
+the browser tools with "always allow" so later unattended runs don't stop at a prompt.
 
-**macOS / Linux:** give the user crontab lines, one per time. For example, for 09:00:
+**Terminal / no desktop app:** on Windows, `scripts/schedule-windows.ps1` (plugin root) registers
+Task Scheduler tasks that run `scripts/run-once.ps1`; add `-Remove` to delete them.
+On macOS/Linux, give crontab lines, one per time, e.g. for 09:00:
 ```
-0 9 * * * cd ~ && claude --plugin-dir "<plugin root>" -p "Use the reel-reactor:react skill to run Reel Reactor now." --allowedTools "mcp__playwright,Read,Write,Edit,Bash(node -e:*)" >> ~/.reel-reactor/run.log 2>&1
+0 9 * * * cd ~ && claude -p "/reel-reactor:react" --allowedTools "mcp__plugin_reel-reactor_playwright__*" Read Write Edit "Bash(node -e:*)" >> ~/.reel-reactor/run.log 2>&1
 ```
-
-Remind the user that the computer has to be awake and logged in at those times, and a browser
-window will pop up during each run.

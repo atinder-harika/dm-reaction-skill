@@ -26,66 +26,85 @@ Once per run it also leaves a short funny comment on the standout reel.
 ## How it works
 
 ```
-OS scheduler (9am / 12pm / 5pm)
-   └─▶ claude -p "run reel reactor"
-         └─▶ skill: reel-reactor:react
-               └─▶ Playwright MCP ─▶ instagram.com/direct
-                     ├─ new reels from whitelisted friends only
-                     ├─ read top comments ─▶ mood ─▶ emoji   (~80-90% of reels)
-                     ├─ leave a few alone                   (~10%, looks human)
-                     └─ standout reel ─▶ 1 short funny comment
+Claude app Scheduled task (9am / 12pm / 5pm)
+   └─▶ /reel-reactor:react  (a skill = plain-English instructions)
+         └─▶ bundled Playwright browser ─▶ instagram.com/direct
+               ├─ new reels from whitelisted friends only
+               ├─ read top comments ─▶ mood ─▶ emoji   (~80-90% of reels)
+               ├─ leave a few alone                   (~10%, looks human)
+               └─ standout reel ─▶ 1 short funny comment
 ```
 
-The whole behaviour lives in a plain-English [`SKILL.md`](skills/react/SKILL.md). There's no bot
-code; Claude drives the browser.
+There's no bot code. The behaviour lives in [`skills/react/SKILL.md`](skills/react/SKILL.md) and
+Claude drives a real browser. The plugin ships its own Playwright MCP server, so installing the
+plugin installs the browser tools too.
 
-## Requirements
+---
 
-- [Claude Code](https://docs.claude.com/en/docs/claude-code)
-- Node.js 18+ (for the Playwright MCP)
-- A throwaway Instagram account
+## End-to-end: from repo link to reactions on autopilot
 
-## Install
+About 10 minutes. These steps are for the **Claude desktop app** (Code tab) on Windows or Mac.
 
-```bash
-git clone https://github.com/<you>/dm-reaction-skill.git
+### 0. You need
+- The **Claude desktop app**, signed in, with the **Code** tab
+- **Node.js 18+** from https://nodejs.org (LTS). After installing it, **fully quit and reopen** the Claude app.
+- **Google Chrome** or Microsoft Edge
+- A **throwaway Instagram account**, plus 1 or 2 friends who will send it reels
+
+### 1. Start a session
+In the Code tab, start a new session in any folder (an empty folder like `Documents/reel-reactor`
+is fine). Reel Reactor keeps its own files in `~/.reel-reactor/`, not in that folder.
+
+### 2. Install the plugin
+In the session's prompt box, type these two commands, one at a time:
+
 ```
-
-Then, inside Claude Code:
-
+/plugin marketplace add atinder-harika/dm-reaction-skill
 ```
-/plugin marketplace add ./dm-reaction-skill
+```
 /plugin install reel-reactor@reel-reactor-marketplace
 ```
 
-Or try it without installing: `claude --plugin-dir ./dm-reaction-skill`.
+Pick **user** scope when it asks, so it's available in every session.
 
-## Setup
+<details>
+<summary>Other ways to install</summary>
 
-In Claude Code, say **"set up reel reactor"** (or run `/reel-reactor:setup`). It will:
+- **Desktop UI:** click **+** next to the prompt box → **Plugins** → **Browse / Manage plugins**
+  (the marketplace has to be added first, as above).
+- **Terminal** (Claude Code CLI):
+  ```bash
+  claude plugin marketplace add atinder-harika/dm-reaction-skill
+  claude plugin install reel-reactor@reel-reactor-marketplace
+  ```
+- **From a clone, no install:** `git clone https://github.com/atinder-harika/dm-reaction-skill`,
+  then `claude --plugin-dir ./dm-reaction-skill`.
+</details>
 
-1. check Node and the **Playwright MCP**, and give you the exact install command if it's missing:
-   ```bash
-   # macOS / Linux
-   claude mcp add playwright --scope user -- npx @playwright/mcp@latest --user-data-dir ~/.reel-reactor/playwright-profile
-   ```
-   ```powershell
-   # Windows
-   claude mcp add playwright --scope user -- cmd /c npx @playwright/mcp@latest --user-data-dir "$env:USERPROFILE\.reel-reactor\playwright-profile"
-   ```
-2. create `~/.reel-reactor/config.json` and ask which friends to whitelist
-3. open Instagram so **you** can log in by hand (Claude never handles your password; the
-   persistent browser profile keeps you logged in)
-4. offer to schedule it
+### 3. Start a fresh session
+Plugins and their browser tools load when a session starts. Open a **new session** (same folder is fine).
 
-## Run
+### 4. Run setup
+Type:
+```
+/reel-reactor:setup
+```
+(or just say "set up reel reactor"). Claude will:
+1. check Node and the bundled browser tools
+2. create `~/.reel-reactor/config.json` and ask for your friends' usernames and run times
+3. open a browser window on Instagram. **Log in yourself** with the throwaway account and tick
+   "Save login info". Claude never sees or types your password, and the login is saved in
+   `~/.reel-reactor/playwright-profile/` for future runs.
 
-Say **"run reel reactor"** or `/reel-reactor:react`.
+Approve the permission prompts as they come up. Choose "always allow" for the browser tools
+so scheduled runs don't get stuck waiting on you.
 
-The first run is a **dry run** (`"dryRun": true`): it reads everything and prints what it *would* do.
-When the table looks right, set `"dryRun": false`.
-
-Example output:
+### 5. Dry run
+Have a friend DM a couple of reels to the throwaway account, then type:
+```
+/reel-reactor:react
+```
+The first run is a **dry run**: it opens the DMs, reads the comments and prints what it *would* do:
 
 | friend | reel | mood | action |
 |---|---|---|---|
@@ -93,12 +112,37 @@ Example output:
 | sam | C9aBc… | hype | none (roll 93) |
 | alex | C8qRs… | wholesome | 😍 + comment: "the dog's face at the end lmao" |
 
+### 6. Go live
+Say **"set dryRun to false in my reel reactor config"** (or edit `~/.reel-reactor/config.json`),
+then run `/reel-reactor:react` again. Check the Instagram app: reactions appear under the reels
+in the DM thread, and the comment appears on the standout reel.
+
+Run it once more right away. It should report **nothing new**, because each reel is handled only once.
+
+### 7. Put it on a schedule
+Say **"schedule reel reactor"** and Claude will set up the app's Scheduled tasks for you.
+To do it by hand: **Code** tab → **Scheduled** (sidebar) → **New task**:
+- **Prompt:** `/reel-reactor:react`
+- **Advanced settings:** **Only on this computer**
+- **Folder:** the one from step 1
+- **Schedule:** Daily at 09:00. Repeat for 12:00 and 17:00, or use one **Custom** cron: `0 9,12,17 * * *`
+
+Click **Run now** once to confirm it works unattended.
+Scheduled tasks run only while the Claude app is open and the computer is awake. A browser window
+pops up for each run.
+
+### Stop it
+Pause or delete the tasks under **Code → Scheduled**. To remove everything:
+`/plugin uninstall reel-reactor`, then delete `~/.reel-reactor/`.
+
+---
+
 ## Config: `~/.reel-reactor/config.json`
 
 | key | default | what it does |
 |---|---|---|
 | `friends` | `[]` | Instagram usernames whose DMs get processed. Nobody else is touched. |
-| `schedule` | `["09:00","12:00","17:00"]` | Daily run times, used by the scheduler script |
+| `schedule` | `["09:00","12:00","17:00"]` | Daily run times (used when scheduling) |
 | `ratios` | `{emoji: .8, sticker: .1, none: .1}` | Chance of each action per reel |
 | `stickersEnabled` | `false` | Stickers are a v2 feature; while off, the sticker share becomes emoji |
 | `stickers` | `[]` | Reserved for v2 |
@@ -107,27 +151,52 @@ Example output:
 | `commentsPerRun` | `1` | Funny comments per run |
 | `maxReelsPerRun` | `15` | Safety cap |
 | `dryRun` | `true` | Read only, no clicks |
+| `browser` | *(unset = Chrome)* | Optional: `msedge`, `firefox` or `webkit`. Start a new session after changing it. |
 
-Run state (`lastRun`, processed reel IDs) is kept in `~/.reel-reactor/state.json`, so a reel is
-never reacted to twice.
+Run state (`lastRun`, processed reel IDs) lives in `~/.reel-reactor/state.json`.
 
-## Scheduling
+## Troubleshooting
 
-**Windows** (Task Scheduler):
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts\schedule-windows.ps1          # create tasks
-powershell -ExecutionPolicy Bypass -File scripts\schedule-windows.ps1 -Remove  # delete them
+| symptom | fix |
+|---|---|
+| `/reel-reactor:setup` isn't recognised | Start a new session after installing. Check `/plugin` → Installed. |
+| "no browser tools" | Install Node, **fully restart the app**, then start a new session. Type `/mcp` and check `plugin:reel-reactor:playwright` for the error. |
+| Browser won't launch / Chrome not found | Add `"browser": "msedge"` to the config, then start a new session |
+| Asked to log in every run | Log in from the browser window that setup opens and tick "Save login info". Don't delete `~/.reel-reactor/playwright-profile/`. |
+| Scheduled run did nothing | The app must be open and the PC awake. Open the task → **History**. Approve tools with "always allow" during **Run now**. |
+| A reel got skipped | Instagram's UI changed. The reason is in the summary table. Wording fixes go in `skills/react/SKILL.md`. |
+| Checkpoint / "suspicious activity" | The run stops on purpose. Clear it yourself in the browser and run less often. |
+
+## Without the desktop app (CLI only)
+
+Install with the terminal commands above, then run `claude` and use the same `/reel-reactor:*` commands.
+For scheduling:
+
+- **Windows** (Task Scheduler):
+  ```powershell
+  powershell -ExecutionPolicy Bypass -File scripts\schedule-windows.ps1          # create tasks
+  powershell -ExecutionPolicy Bypass -File scripts\schedule-windows.ps1 -Remove  # delete them
+  ```
+- **macOS / Linux** (cron), one line per time:
+  ```
+  0 9 * * * cd ~ && claude -p "/reel-reactor:react" --allowedTools "mcp__plugin_reel-reactor_playwright__*" Read Write Edit "Bash(node -e:*)" >> ~/.reel-reactor/run.log 2>&1
+  ```
+
+Headless runs pre-approve only the bundled browser, file read/write for the config and state, and
+`node -e` for the dice rolls. Logs go to `~/.reel-reactor/run.log`.
+
+## Repo layout
+
 ```
-Logs go to `~/.reel-reactor/run.log`.
-
-**macOS / Linux** (cron), one line per time:
+.claude-plugin/plugin.json        plugin manifest
+.claude-plugin/marketplace.json   makes this repo installable with /plugin
+.mcp.json                         bundled Playwright MCP server
+skills/react/SKILL.md             one run: DMs → mood → emoji → comment
+skills/setup/SKILL.md             checks, config, login, scheduling
+config/reel-reactor.example.json  config template
+scripts/playwright-mcp.mjs        launches Playwright MCP with a persistent profile
+scripts/*.ps1                     CLI scheduling on Windows
 ```
-0 9 * * * cd ~ && claude --plugin-dir "/path/to/dm-reaction-skill" -p "Use the reel-reactor:react skill to run Reel Reactor now." --allowedTools "mcp__playwright,Read,Write,Edit,Bash(node -e:*)" >> ~/.reel-reactor/run.log 2>&1
-```
-
-Scheduled runs are headless Claude, so `--allowedTools` pre-approves only the Playwright browser,
-file read/write for the config and state, and `node -e` for the dice rolls.
-Your computer has to be awake, and a browser window pops up during each run.
 
 ## Roadmap
 
