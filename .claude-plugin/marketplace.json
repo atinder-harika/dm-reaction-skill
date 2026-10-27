@@ -1,0 +1,13 @@
+{
+  "name": "reel-reactor-marketplace",
+  "owner": {
+    "name": "Atinder Harika"
+  },
+  "plugins": [
+    {
+      "name": "reel-reactor",
+      "source": "./",
+      "description": "Mood-matched emoji reactions and one funny comment on reels your friends DM you."
+    }
+  ]
+}

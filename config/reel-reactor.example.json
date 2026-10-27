@@ -1,0 +1,12 @@
+{
+  "friends": ["friend_username_1", "friend_username_2"],
+  "schedule": ["09:00", "12:00", "17:00"],
+  "ratios": { "emoji": 0.8, "sticker": 0.1, "none": 0.1 },
+  "stickersEnabled": false,
+  "stickers": [],
+  "defaultEmoji": "😂",
+  "emojiPalette": ["😂", "💀", "😭", "🔥", "😍", "😮", "👏", "❤️"],
+  "commentsPerRun": 1,
+  "maxReelsPerRun": 15,
+  "dryRun": true
+}

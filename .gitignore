@@ -1,0 +1,8 @@
+# Personal config, run state and the logged-in browser profile never belong in git
+reel-reactor.json
+config.json
+state.json
+playwright-profile/
+.playwright-profile/
+.playwright-mcp/
+node_modules/

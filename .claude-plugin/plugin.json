@@ -1,0 +1,10 @@
+{
+  "name": "reel-reactor",
+  "version": "0.1.0",
+  "description": "Reacts to Instagram reels your whitelisted friends DM you: mood-matched emojis plus one funny comment per run. Educational toy, use a throwaway account.",
+  "author": {
+    "name": "Atinder Harika"
+  },
+  "license": "MIT",
+  "keywords": ["instagram", "playwright", "reels", "fun"]
+}
