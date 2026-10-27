@@ -1,6 +1,7 @@
 {
-  "friends": ["friend_username_1", "friend_username_2"],
+  "friends": [],
   "schedule": ["09:00", "12:00", "17:00"],
+  "scheduleEnabled": true,
   "mode": "fast",
   "ratios": { "emoji": 0.8, "sticker": 0.1, "none": 0.1 },
   "stickersEnabled": false,
@@ -9,5 +10,5 @@
   "emojiPalette": ["😂", "💀", "😭", "🔥", "😍", "😮", "👏", "❤️"],
   "repliesPerRun": 1,
   "maxReelsPerRun": 15,
-  "dryRun": true
+  "dryRun": false
 }

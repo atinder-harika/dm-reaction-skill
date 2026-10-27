@@ -23,6 +23,10 @@ if (-not (Get-Command claude -ErrorAction SilentlyContinue)) {
 }
 
 $config = Get-Content $configPath -Raw -Encoding utf8 | ConvertFrom-Json
+if ($config.scheduleEnabled -eq $false) {
+    Write-Host "Schedule is paused (/reel-reactor:schedule off), so no tasks were registered."
+    return
+}
 $runner = Join-Path $PSScriptRoot "run-once.ps1"
 $action = New-ScheduledTaskAction -Execute "powershell.exe" `
     -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$runner`""

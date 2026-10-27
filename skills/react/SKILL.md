@@ -26,7 +26,12 @@ If `config.json` is missing, stop and tell the user to run `/reel-reactor:setup`
 is missing, start from `{ "lastRun": null, "processedReelIds": [], "recheckFriends": [] }`.
 
 The scripts are in `scripts/` at the plugin root, two levels up from this skill's base directory.
-Pass their **absolute** path as `filename`.
+
+**Running a script:** call `browser_run_code_unsafe` (named `browser_run_code` in some Playwright MCP
+versions; use whichever exists) with `filename` = the script's **absolute** path. The bundled server
+is started with `--allow-unrestricted-file-access`, so this works whatever folder the session runs in.
+If the call fails with "File access denied … outside allowed roots" (for example on a standalone
+`mcp__playwright__*` server), Read the script file and pass its whole content as `code` instead.
 
 ## Guardrails (never break these)
 
@@ -48,7 +53,12 @@ Pass their **absolute** path as `filename`.
 ## Fast mode
 
 ### 1. Load config and state
-Read both files. Defaults: `maxReelsPerRun` 15, `repliesPerRun` 1 (an old `commentsPerRun` key means the same).
+First run `node "<plugin root>/scripts/rr.mjs" migrate --quiet`. It upgrades a config from an older
+plugin version (new keys, renamed keys) and prints nothing when there's nothing to change. If it prints
+"Config updated", show those lines to the user at the top of your report. When an upgrade changes what
+gets sent, it turns `dryRun` on for one run (`dryRunReason: "upgrade"`).
+
+Then read both files. Defaults: `maxReelsPerRun` 15, `repliesPerRun` 1.
 
 ### 2. Collect (one call, read-only)
 1. `browser_navigate` to `https://www.instagram.com/direct/inbox/` (the scripts read their input from
@@ -57,7 +67,7 @@ Read both files. Defaults: `maxReelsPerRun` 15, `repliesPerRun` 1 (an old `comme
    `() => { localStorage.setItem('reelReactor.input', JSON.stringify(<INPUT>)); }`, where INPUT is
    `{ friends, processedReelIds, recheckFriends, force, maxReelsPerRun }` from config and state.
    `force` is true only when the user asked for a full re-check; scheduled runs use false.
-3. `browser_run_code` (or `browser_run_code_unsafe`) with `filename` = `<plugin root>/scripts/collect.js`.
+3. `browser_run_code_unsafe` with `filename` = `<plugin root>/scripts/collect.js` (see "Running a script").
 
 It returns `{ ok, earlyExit, threads, reels, alreadyReacted }`:
 - `earlyExit: true` means no whitelisted thread is unread. Update `lastRun`, print
@@ -94,7 +104,7 @@ Skip the reply when `repliesPerRun` is 0.
      "reply": { "threadFbid": "…", "messageId": "…", "code": "…", "previewFile": "…", "text": "…" } }
    ```
    Include only reels whose roll gave an emoji. `reply` is null when skipped.
-2. `browser_run_code` with `filename` = `<plugin root>/scripts/act.js`.
+2. `browser_run_code_unsafe` with `filename` = `<plugin root>/scripts/act.js` (see "Running a script").
 
 Each result has a `status`:
 - `verified`: done, and confirmed in Instagram's data on the right message
@@ -126,6 +136,10 @@ Print the summary table and one line of totals:
 | sam | C9xYz… | funny | 😂 | verified |
 | sam | C9aBc… | hype | none (roll 93) | — |
 | alex | C8qRs… | wholesome | 😍 + reply: "the dog's face at the end lmao" | verified |
+
+After a dry run, end with: "Dry run: nothing was sent. Run `/reel-reactor:dry-run off` to go live."
+If `dryRunReason` was `"upgrade"`, say it was turned on automatically because the plugin update changed
+what gets sent.
 
 ## Watch mode (step by step, for demos)
 

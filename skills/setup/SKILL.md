@@ -1,78 +1,73 @@
 ---
 name: setup
-description: First-time setup for Reel Reactor. Checks that the plugin's Playwright browser tools are available (and explains how to fix it if not), creates the config, walks the user through a manual Instagram login, and helps schedule runs. Use when the user says "set up reel reactor" or the react skill reports missing config or login.
+description: First-time setup or upgrade for Reel Reactor. Checks Node and the plugin's browser tools, creates or upgrades the config, walks the user through a manual Instagram login in the plugin's own browser, and creates or updates the scheduled task. Use when the user says "set up reel reactor", after a plugin update, or when the react skill reports missing config or login.
 ---
 
 # Reel Reactor setup
 
-Go through these checks in order. Report each one as ✅ or ❌ with a one-line fix.
-Don't move on past a ❌ that blocks later steps.
+Go through these steps in order. Report each as ✅ or ❌ with a one-line fix. Don't move past a ❌
+that blocks later steps. The plugin root is two levels up from this skill's base directory.
+Keep the whole report short.
 
-## 1. Node / npx
-Run `node --version`. Node 18 or newer is required. If it's missing, tell the user to install
-the LTS from https://nodejs.org, **fully quit and reopen the Claude app**, and run setup again.
+## 1. Node
+Run `node --version`. Node 18 or newer is required. If it's missing, tell the user to install the LTS
+from https://nodejs.org, **fully quit and reopen the Claude app**, and run setup again.
 
 ## 2. Browser tools (bundled Playwright MCP)
-The plugin ships its own Playwright MCP server (`.mcp.json` at the plugin root, launched by
-`scripts/playwright-mcp.mjs`). Its tools are named `mcp__plugin_reel-reactor_playwright__*`,
-for example `mcp__plugin_reel-reactor_playwright__browser_navigate`.
+The plugin ships its own Playwright MCP server (`.mcp.json`, launched by `scripts/playwright-mcp.mjs`).
+Its tools are named `mcp__plugin_reel-reactor_playwright__*`.
 
-- If those tools are available, ✅.
-- If they're missing, the plugin was probably installed during this session. Tell the user to
-  start a **new session** (or restart the app) and say "set up reel reactor" again.
-- If they're still missing after a restart, ask the user to type `/mcp` and check the
-  `plugin:reel-reactor:playwright` server. The usual causes are Node missing from PATH or a
-  failed first `npx` download, and the `/mcp` panel shows the error.
-- Fallback (only if the bundled server won't start): a standalone Playwright MCP also works.
-  The react skill accepts `mcp__playwright__*` tools too. Command, from a terminal:
-  `claude mcp add playwright --scope user -- npx @playwright/mcp@latest --user-data-dir ~/.reel-reactor/playwright-profile`
+- Available → ✅.
+- Missing → the plugin was probably installed or updated during this session. Tell the user to start a
+  **new session** (or run `/reload-plugins`) and run setup again.
+- Still missing after that → ask the user to type `/mcp` and check `plugin:reel-reactor:playwright`.
+  Usual causes: Node not on PATH, or the first `npx` download failed.
 
-Stop here if no browser tools are loaded. The remaining steps need the browser.
+Stop here if no browser tools are loaded.
 
-## 3. Config
-Make the folder `~/.reel-reactor/` (`%USERPROFILE%\.reel-reactor\` on Windows) if it doesn't exist.
-If `config.json` isn't there, copy `config/reel-reactor.example.json` from the plugin root
-(two levels up from this skill's base directory) to `~/.reel-reactor/config.json`.
+## 3. Config (create or upgrade)
+Run `node "<plugin root>/scripts/rr.mjs" migrate`. It creates `~/.reel-reactor/config.json` from the
+example, or upgrades an existing one from an older plugin version (adds new keys, renames old ones). Show
+its "Config updated" lines, if any, so the user sees what changed.
 
-Then ask the user for:
-- the Instagram usernames of the friends to whitelist (without `@`) → `friends`
-- run times, 2 to 4 per day in 24h `HH:MM` → `schedule` (default `09:00`, `12:00`, `17:00`)
+Then check `node "<plugin root>/scripts/rr.mjs" friends`. If no friends are whitelisted, ask for the
+Instagram usernames of the friends whose reels should get reactions, and add them with
+`node "<plugin root>/scripts/rr.mjs" friends add <usernames>`. Don't hand-edit config.json.
 
-Write those into `config.json`. Leave `dryRun: true` for now and tell the user that the
-first run is a dry run on purpose.
+## 4. Instagram login (done by the user, in the plugin's own browser)
+Tell the user this **before** anything opens:
 
-## 4. Instagram login (manual, done by the user)
-`browser_navigate` to `https://www.instagram.com/`. A separate browser window opens.
-If it shows the logged-in feed, ✅. Otherwise tell the user:
+> Reel Reactor uses **its own browser window with its own login**, kept in `~/.reel-reactor/playwright-profile`.
+> Your normal Chrome or Edge, and whatever you're logged into there, isn't touched or reused.
+> Log in there once with your **throwaway** account and it stays logged in for future runs.
 
-> A browser window is open on Instagram. Log in **yourself** with your throwaway account,
-> tick "Save login info" if it asks, then tell me when you're done.
+Then `browser_navigate` to `https://www.instagram.com/`. If it shows the logged-in feed, ✅. Otherwise:
 
-Never type credentials yourself. Once the user confirms, navigate again and snapshot to check.
-If the browser fails to launch with a "chrome not found" style error, set `"browser": "msedge"`
-in `config.json` (Windows always has Edge), ask the user to start a new session, and try again.
+> The Reel Reactor browser window is open on Instagram. Log in **yourself**, tick "Save login info"
+> if it asks, and tell me when you're done.
 
-## 5. Test run
-Suggest running `/reel-reactor:react` now (it's a dry run). When the table looks right,
-set `dryRun` to `false` in `config.json`.
+Never type credentials yourself. Once the user confirms, navigate again and check.
+If the browser won't launch ("chrome not found" or similar), add `"browser": "msedge"` to `config.json`
+(Edge is on every Windows PC). It's still a separate profile, not the user's normal Edge. Then ask the
+user to start a new session and run setup again.
 
-## 6. Scheduling
-**Claude desktop app (recommended):** use the app's Scheduled tasks, which run while the app
-is open and the computer is awake. If you have a scheduled-task tool, offer to create one task
-per time in `config.schedule` yourself. Each task:
-- prompt: `/reel-reactor:react`
-- runs on this computer (local), in the session's current folder
-- schedule: daily at that time (or one custom cron task like `0 9,12,17 * * *`)
-- model: Sonnet or Haiku when the task lets you choose. The scripts do the browser work, so a smaller model is enough.
+## 5. Schedule
+Read `skills/schedule/SKILL.md` (plugin root) and follow its steps 2 and 3, using the `TASK_SPEC` from
+`node "<plugin root>/scripts/rr.mjs" schedule`. That creates the scheduled task, or **updates the
+existing one** (for example a task made by an older version) instead of making a duplicate. If the user
+wants different times, use `/reel-reactor:schedule HH:MM HH:MM …` instead.
 
-Otherwise the user creates them: **Code** tab → **Scheduled** in the sidebar → **New task** →
-paste `/reel-reactor:react` → under **Advanced settings** choose **Only on this computer** → pick
-a folder and **Daily** at the time → **Create**. Tell the user to use **Run now** once and approve
-the browser tools with "always allow" so later unattended runs don't stop at a prompt.
+## 6. Done
+Finish with a short summary and the commands they can use from now on:
 
-**Terminal / no desktop app:** on Windows, `scripts/schedule-windows.ps1` (plugin root) registers
-Task Scheduler tasks that run `scripts/run-once.ps1`; add `-Remove` to delete them.
-On macOS/Linux, give crontab lines, one per time, e.g. for 09:00:
-```
-0 9 * * * cd ~ && claude -p "/reel-reactor:react" --model sonnet --allowedTools "mcp__plugin_reel-reactor_playwright__*" Read Write Edit "Bash(node -e:*)" >> ~/.reel-reactor/run.log 2>&1
-```
+| command | what it does |
+|---|---|
+| `/reel-reactor:react` | run once now |
+| `/reel-reactor:status` | last run, friends, schedule, login |
+| `/reel-reactor:friends add\|remove\|list` | manage the whitelist |
+| `/reel-reactor:schedule 09:00 12:00 17:00` / `off` / `on` | change or pause the run times |
+| `/reel-reactor:dry-run on\|off` | read-only rehearsal mode |
+
+New installs run **live**. Offer a rehearsal first as an option ("want a dry run first? `/reel-reactor:dry-run on`,
+then `/reel-reactor:react`"), but don't make it a required step. If step 3 reported that dry run was turned
+on by an upgrade, say the next run is a rehearsal and how to go live afterwards.

@@ -12,6 +12,7 @@ async (page) => {
   const isQuery = (name) => (r) => ((typeof r.request === 'function' ? r.request() : r).postData() || '').includes(name);
 
   if (!page.url().startsWith(IG)) await page.goto(IG + '/direct/inbox/', { waitUntil: 'domcontentloaded' });
+  if (/accounts\/login|challenge|checkpoint/.test(page.url())) return { ok: false, error: 'login_required', url: page.url() };
   const input = await page.evaluate(() => JSON.parse(localStorage.getItem('reelReactor.input') || 'null'));
   if (!input || !Array.isArray(input.friends)) return { ok: false, error: 'missing_input: set localStorage["reelReactor.input"] first' };
   const opts = { maxReelsPerRun: 15, messagesPerThread: 60, topComments: 5, recheckFriends: [], processedReelIds: [], force: false, ...input };
