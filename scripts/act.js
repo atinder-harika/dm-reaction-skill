@@ -47,16 +47,31 @@ async (page) => {
     }, tpl);
   };
 
-  // Finds the message row for one reel: the article whose preview image matches, scrolled into view.
+  // Scrolls the message list itself (not whatever is under the mouse) by ~one screen. Returns false at the end.
+  const scrollList = (dir) => page.evaluate((dir) => {
+    let el = document.querySelector('[role=article]')?.parentElement;
+    while (el && !(el.scrollHeight > el.clientHeight + 10 && /auto|scroll/.test(getComputedStyle(el).overflowY))) el = el.parentElement;
+    if (!el) return false;
+    const before = el.scrollTop;
+    el.scrollTop += dir * el.clientHeight * 0.8;
+    return Math.abs(el.scrollTop - before) > 1;
+  }, dir);
+
+  // Finds the message row for one reel: the article whose preview image matches. The list is virtualized
+  // (only a few messages are rendered), so search up to the oldest message, then back down to the newest.
   const findArticle = async (previewFile) => {
     const article = page.locator('[role=article]').filter({ has: page.locator(`img[src*="${previewFile}"]`) }).first();
-    for (let i = 0; i < 12; i++) {
-      if (await article.count()) { await article.scrollIntoViewIfNeeded(); return article; }
-      // Older messages load as the list scrolls up; wait for the list to grow instead of a fixed sleep.
-      const before = await page.locator('[role=article]').count();
-      await page.locator('[role=article]').first().scrollIntoViewIfNeeded().catch(() => {});
-      await page.mouse.wheel(0, -2500);
-      await page.waitForFunction((n) => document.querySelectorAll('[role=article]').length > n, before, { timeout: 2500 }).catch(() => {});
+    for (const dir of [-1, 1]) {
+      for (let i = 0; i < 25; i++) {
+        if (await article.count()) { await article.scrollIntoViewIfNeeded(); return article; }
+        if (!(await scrollList(dir))) {
+          // At the end of the list: give lazy-loaded older messages a moment to arrive, then try once more.
+          await article.waitFor({ state: 'attached', timeout: 1500 }).catch(() => {});
+          if (await article.count()) { await article.scrollIntoViewIfNeeded(); return article; }
+          if (!(await scrollList(dir))) break;
+        }
+        await article.waitFor({ state: 'attached', timeout: 600 }).catch(() => {});
+      }
     }
     return null;
   };
@@ -121,6 +136,8 @@ async (page) => {
     if (/accounts\/login|challenge|checkpoint/.test(page.url())) return { ok: false, error: 'login_required', results };
     const req = await reqP;
     await page.locator('[role=article]').first().waitFor({ timeout: 15000 }).catch(() => {});
+    // The message list re-renders once right after load; let it settle so located bubbles stay attached.
+    await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
     const fetchThread = req ? await makeFetcher(req) : null;
     if (!fetchThread) { for (const a of work.reacts) results.push({ code: a.code, action: a.emoji, status: 'skipped', detail: 'no_thread_data' }); continue; }
 
@@ -129,9 +146,21 @@ async (page) => {
       const beforeMine = Object.fromEntries((before?.messages || []).map((m) => [m.id, m.mine]));
       if (beforeMine[a.messageId]) { results.push({ code: a.code, action: a.emoji, status: 'skipped', detail: 'already_reacted' }); continue; }
       try {
-        const article = a.previewFile ? await findArticle(a.previewFile) : null;
+        let article = null;
+        // A re-render can detach the bubble mid-action. Retry, but only while no reaction of ours has landed anywhere.
+        for (let attempt = 0; ; attempt++) {
+          try {
+            article = a.previewFile ? await findArticle(a.previewFile) : null;
+            if (article) await react(article, a.emoji);
+            break;
+          } catch (e) {
+            await page.keyboard.press('Escape').catch(() => {});
+            if (attempt >= 2 || !/not attached|detached/i.test(String(e.message))) throw e;
+            const now = await fetchThread();
+            if ((now?.messages || []).some((m) => m.mine !== (beforeMine[m.id] || ''))) break;
+          }
+        }
         if (!article) { results.push({ code: a.code, action: a.emoji, status: 'not_found' }); continue; }
-        await react(article, a.emoji);
         if (probe) { results.push({ code: a.code, action: a.emoji, status: 'probe_ok' }); continue; }
         const after = await waitFor(fetchThread, (d) => d.messages.some((m) => m.id === a.messageId && m.mine) || d.messages.some((m) => m.mine !== (beforeMine[m.id] || '')));
         const target = after?.messages.find((m) => m.id === a.messageId);
