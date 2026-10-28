@@ -20,10 +20,10 @@ There are two modes:
 
 User files live in `~/.reel-reactor/` (on Windows: `%USERPROFILE%\.reel-reactor\`):
 - `config.json`: the user's config (schema in `config/reel-reactor.example.json` at the plugin root)
-- `state.json`: `{ "lastRun": ISO, "processedReelIds": [codes], "recheckFriends": [usernames] }`
+- `state.json`: `{ "lastRun": ISO, "processedReelIds": [codes], "recheckFriends": [usernames], "lastSeen": { username: ms } }`
 
 If `config.json` is missing, stop and tell the user to run `/reel-reactor:setup`. If `state.json`
-is missing, start from `{ "lastRun": null, "processedReelIds": [], "recheckFriends": [] }`.
+is missing, start from `{ "lastRun": null, "processedReelIds": [], "recheckFriends": [], "lastSeen": {} }`.
 
 The scripts are in `scripts/` at the plugin root, two levels up from this skill's base directory.
 
@@ -65,12 +65,13 @@ Then read both files. Defaults: `maxReelsPerRun` 15, `repliesPerRun` 1.
    this site's localStorage).
 2. `browser_evaluate` with
    `() => { localStorage.setItem('reelReactor.input', JSON.stringify(<INPUT>)); }`, where INPUT is
-   `{ friends, processedReelIds, recheckFriends, force, maxReelsPerRun }` from config and state.
+   `{ friends, processedReelIds, recheckFriends, lastSeen, force, maxReelsPerRun }` from config and state.
    `force` is true only when the user asked for a full re-check; scheduled runs use false.
 3. `browser_run_code_unsafe` with `filename` = `<plugin root>/scripts/collect.js` (see "Running a script").
 
 It returns `{ ok, earlyExit, threads, reels, alreadyReacted }`:
-- `earlyExit: true` means no whitelisted thread is unread. Update `lastRun`, print
+- `earlyExit: true` means nothing happened in any whitelisted thread since the last check (whether or
+  not the user opened the chat in between). Update `lastRun`, print
   "Nothing new from <friends>", and **stop**. Most scheduled runs end here in seconds.
 - `ok: false` with `login_required`: stop (guardrail). With any other error, tell the user the data feed
   didn't work and continue in **watch mode** from its step 2.
@@ -121,10 +122,12 @@ Write `state.json`:
 - `lastRun`: now (ISO 8601)
 - `processedReelIds`: the old ones, plus this run's codes that are `verified`, rolled `none`, or in
   `alreadyReacted`. Keep the newest 500. In dry-run mode, add nothing.
+- `lastSeen`: for every thread collect returned with a `lastActivity`, set `lastSeen[friend]` to it.
+  Next run, a thread is only re-read if something happened in it after that moment, whether or not
+  anyone opened the chat. In dry-run mode, don't update it, so the live run looks again.
 - `recheckFriends`: friends who still have reels that weren't done (`not_found`, `skipped`,
-  `unverified`, over the cap), and in dry-run mode every friend that had reels. Opening a thread marks
-  it read, so without this the early-exit check would never look at that thread again. Drop a friend
-  from the list once a run leaves nothing unfinished for them.
+  `unverified`, over the cap). Their `lastSeen` has moved on, so without this the next run would
+  skip them. Drop a friend from the list once a run leaves nothing unfinished for them.
 
 There's no "older than the last run" cutoff. Every reel is judged only by `processedReelIds` and
 whether it already has your reaction, so reels a run couldn't load are picked up by the next one.

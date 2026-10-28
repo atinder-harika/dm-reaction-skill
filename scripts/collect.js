@@ -4,9 +4,11 @@
 // friends sent, with caption, play/like counts and top comments. Nothing is clicked, sent or marked read.
 //
 // Input: localStorage["reelReactor.input"] on instagram.com, set by the skill just before this runs:
-//   { friends: [usernames], processedReelIds: [codes], recheckFriends: [usernames], force: bool,
-//     maxReelsPerRun: 15, messagesPerThread: 60, topComments: 5 }
-// Output: { ok, earlyExit?, viewer, threads: [...], reels: [...], alreadyReacted: [codes], error? }
+//   { friends: [usernames], processedReelIds: [codes], recheckFriends: [usernames], lastSeen: { username: ms },
+//     force: bool, maxReelsPerRun: 15, messagesPerThread: 60, topComments: 5 }
+// A thread is checked when it has activity newer than lastSeen[friend] (the thread's last activity at our previous
+// check), not when Instagram marks it unread, so opening a chat yourself doesn't hide its new reels.
+// Output: { ok, earlyExit?, viewer, threads: [{ friend, check, lastActivity, unread, ... }], reels: [...], alreadyReacted: [codes], error? }
 async (page) => {
   const IG = 'https://www.instagram.com';
   const isQuery = (name) => (r) => ((typeof r.request === 'function' ? r.request() : r).postData() || '').includes(name);
@@ -15,7 +17,8 @@ async (page) => {
   if (/accounts\/login|challenge|checkpoint/.test(page.url())) return { ok: false, error: 'login_required', url: page.url() };
   const input = await page.evaluate(() => JSON.parse(localStorage.getItem('reelReactor.input') || 'null'));
   if (!input || !Array.isArray(input.friends)) return { ok: false, error: 'missing_input: set localStorage["reelReactor.input"] first' };
-  const opts = { maxReelsPerRun: 15, messagesPerThread: 60, topComments: 5, recheckFriends: [], processedReelIds: [], force: false, ...input };
+  const opts = { maxReelsPerRun: 15, messagesPerThread: 60, topComments: 5, recheckFriends: [], processedReelIds: [], lastSeen: {}, force: false, ...input };
+  const lastSeen = Object.fromEntries(Object.entries(opts.lastSeen || {}).map(([k, v]) => [k.toLowerCase(), String(v)]));
   const friends = new Set(opts.friends.map((f) => f.toLowerCase().replace(/^@/, '')));
   const recheck = new Set(opts.recheckFriends.map((f) => f.toLowerCase()));
   const processed = new Set(opts.processedReelIds);
@@ -38,8 +41,12 @@ async (page) => {
     const t = allThreads.find((x) => !x.is_group && x.users?.length === 1 && x.users[0].username?.toLowerCase() === username);
     if (!t) { threads.push({ friend: username, status: 'not_in_recent_inbox' }); continue; }
     const seen = (t.slide_read_receipts || []).find((r) => r.participant_fbid === viewerFbid)?.watermark_timestamp_ms || '0';
-    const unread = !!t.marked_as_unread || BigInt(t.last_activity_timestamp_ms || '0') > BigInt(seen);
-    threads.push({ friend: username, threadFbid: t.thread_fbid, threadKey: t.thread_key, friendFbid: t.users[0].interop_messaging_user_fbid, unread, check: unread || opts.force || recheck.has(username) });
+    const lastActivity = String(t.last_activity_timestamp_ms || '0');
+    const unread = !!t.marked_as_unread || BigInt(lastActivity) > BigInt(seen);
+    // Never checked, or anything happened since our last check (read or not) → look at the thread.
+    const changed = !(username in lastSeen) || BigInt(lastActivity) > BigInt(lastSeen[username] || '0');
+    threads.push({ friend: username, threadFbid: t.thread_fbid, threadKey: t.thread_key, friendFbid: t.users[0].interop_messaging_user_fbid,
+      lastActivity, unread, check: changed || unread || opts.force || recheck.has(username) });
   }
   const toCheck = threads.filter((t) => t.check);
   const viewer = { fbid: viewerFbid };

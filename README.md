@@ -29,7 +29,7 @@ Once per run it also sends the friend a short funny reply about the standout ree
 Claude app Scheduled task (9am / 12pm / 5pm)  ─▶  /reel-reactor:react
    └─▶ Reel Reactor's own browser window (separate profile, logged in once by you)
          1. collect.js  (1 call, read-only)
-            inbox data ─▶ any whitelisted thread unread?  no ─▶ done in seconds
+            inbox data ─▶ anything new in a whitelisted chat?  no ─▶ done in seconds
             thread data ─▶ new reels without your reaction
             reel data   ─▶ caption, plays, likes, top comments
          2. Claude judges: mood ─▶ emoji (~80-90%) · leave some alone (~10%)
@@ -203,7 +203,7 @@ You shouldn't need to edit it: the commands above cover the common settings.
 | `configVersion` | `3` | Set by the plugin, used for upgrades | |
 
 Run state lives in `~/.reel-reactor/state.json`: `lastRun`, `processedReelIds`, and
-`recheckFriends` (threads that still had unfinished reels, checked next run even if they're read).
+`lastSeen` (each chat's last activity at the previous check: a chat is re-read only if something happened since, so opening it yourself doesn't hide new reels), and `recheckFriends` (chats that still had unfinished reels).
 A reel counts as done once it's in `processedReelIds` or already carries your reaction. There's no
 time cutoff, so nothing is lost when a run is interrupted. Browser snapshots and logs go to
 `~/.reel-reactor/output/`, not the folder your session runs in.
@@ -260,7 +260,7 @@ Headless runs pre-approve only the bundled browser, file read/write for the conf
 skills/react/SKILL.md             one run: collect → mood/emoji/reply → act (+ watch mode)
 skills/setup/SKILL.md             checks, config upgrade, login, scheduled task
 skills/{status,friends,schedule,dry-run}/SKILL.md   the slash commands
-scripts/collect.js                read-only: unread check, new reels, reel metadata + top comments
+scripts/collect.js                read-only: "anything new?" check, new reels, reel metadata + top comments
 scripts/act.js                    scoped reactions + reply, verified against thread data
 scripts/rr.mjs                    config helper behind the commands: migrate, status, friends, schedule, dry-run
 scripts/playwright-mcp.mjs        launches Playwright MCP (own profile, output dir, file access, no code echo)

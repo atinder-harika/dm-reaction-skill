@@ -76,6 +76,7 @@ function load({ create = false } = {}) {
   const state = readJson(STATE, {});
   state.processedReelIds ||= [];
   state.recheckFriends ||= [];
+  state.lastSeen ||= {};
   state.lastRun ??= null;
   return { cfg, state, notes };
 }
@@ -178,6 +179,7 @@ switch (cmd) {
         const removed = users.filter((u) => cfg.friends.includes(u));
         cfg.friends = cfg.friends.filter((u) => !users.includes(u));
         state.recheckFriends = state.recheckFriends.filter((u) => !users.includes(normUser(u)));
+        for (const u of users) delete state.lastSeen[u];
         console.log(removed.length ? `Removed: ${removed.map((u) => "@" + u).join(", ")}` : "None of those were on the list.");
       }
       save(data);
