@@ -20,7 +20,7 @@ It's educational, probably against Instagram's ToS, and only ever used on a thro
 - `scripts/collect.js` (read-only) and `scripts/act.js`: run through `browser_run_code_unsafe` (older MCPs: `browser_run_code`)
   with `filename` = absolute path. That sandbox has no fs/require, so input goes through instagram.com localStorage
   (`reelReactor.input`, `reelReactor.act`), set with `browser_evaluate` first.
-  - collect replays the page's own GraphQL (`PolarisDirectInboxQuery` for unread/early exit, `IGDThreadDetailQuery`
+  - collect replays the page's own GraphQL (`PolarisDirectInboxQuery`: a thread is checked if its `last_activity_timestamp_ms` > `state.lastSeen[friend]`, not by Instagram's unread flag, so opening a chat manually doesn't hide reels; else early exit; `IGDThreadDetailQuery`
     for messages, reactions and reel `target_url`) plus REST `/api/v1/media/<pk>/info|comments`. The old
     `/api/v1/direct_v2/*` REST endpoints return 404 on web.
   - act matches a bubble by its preview image file name, scrolls the message list element itself (it's virtualized),
@@ -37,7 +37,7 @@ It's educational, probably against Instagram's ToS, and only ever used on a thro
   new session → `/reel-reactor:setup` → `/reel-reactor:react`; the scheduled task comes from setup / `/reel-reactor:schedule`.
 
 ## Runtime files (outside the repo)
-`~/.reel-reactor/`: `config.json`, `state.json` (`lastRun`, `processedReelIds` capped at 500, `recheckFriends`; no time cutoff),
+`~/.reel-reactor/`: `config.json`, `state.json` (`lastRun`, `processedReelIds` capped at 500, `recheckFriends`, `lastSeen` {friend: last activity ms}; no time cutoff),
 `playwright-profile/` (the persistent logged-in browser profile), `output/` (MCP snapshots/logs), `run.log`.
 
 ## Scope
